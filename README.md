@@ -371,7 +371,7 @@ Run PHPUnit test suite:
 vendor/bin/phpunit
 ```
 
-Or using Docker Compose:
+Or using Docker Compose (this package is a **library** — Docker only runs the PHP CLI tooling container for tests/linting, no web server):
 
 ```bash
 docker compose up -d

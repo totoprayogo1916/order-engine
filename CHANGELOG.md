@@ -39,6 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New `tests/Unit/EntityEncapsulationTest.php` proving calculation properties are not publicly mutable (reflection), quantity guards reject zero/negative at construction and in `updateQuantity()`, failed guards leave state untouched, and the official quantity path recomputes item and order totals.
 - New public getters for the encapsulated calculation properties: `Order::subtotal()`, `discountTotal()`, `taxTotal()`, `shippingTotal()`, `grandTotal()`; `OrderItem::quantity()`, `unitPrice()`, `discountTotal()`, `taxTotal()`, `subtotal()`.
 - New official mutators replacing raw property writes: `OrderItem::updateQuantity()` (validates ≥ 1, recomputes the subtotal, bumps `updatedAt`) and `OrderItem::setSubtotal()` (write path reserved for `OrderCalculationService`).
+- **Breaking (dev tooling)**: removed the `web` (Nginx) service from `docker-compose.yml` and deleted `.docker/nginx/` — this package is a pure **library** (`"type": "library"`), and the Nginx config pointed at a nonexistent `public/` directory; Docker now runs only the PHP CLI tooling container for tests/linting.
 
 ### Changed
 
