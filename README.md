@@ -26,6 +26,7 @@ In modern ecommerce architectures, managing orders requires strict isolation of 
 - **Money-Safe Calculations**: All monetary values are represented by the `Money` value object using integer minor units (no floating-point arithmetic), safe for payment gateway integration and financial audits.
 - **Multiple Storage Drivers**: Clean separation via PDO (MariaDB, MySQL, SQLite) & In-Memory drivers for ultra-fast testing.
 - **Paginated Customer History**: `paginateByCustomer()` with deterministic ordering and filters for lifecycle status, `created_at` ranges, and a payment view derived from the order status (no payment column stored).
+- **Versioned Schema Migrations**: `MigrationRunner` with an `order_engine_migrations` tracker table — incremental SQL migrations run once, are recorded only after success, and resume safely after failures; `DatabaseMigrator` bootstraps fresh installs from `database/schema.sql`.
 
 ---
 
@@ -332,6 +333,30 @@ CREATE TABLE IF NOT EXISTS order_histories (
 
 CREATE INDEX IF NOT EXISTS idx_order_histories_order_id ON order_histories (order_id);
 ```
+
+### Versioned Migrations
+
+`database/schema.sql` bootstraps fresh installs (every statement uses `CREATE TABLE/INDEX IF NOT EXISTS`, so re-running never touches existing data). For databases that already exist, the bundled migrator applies incremental SQL changes from `database/migrations/*.sql` exactly once, tracked in the `order_engine_migrations` table:
+
+**Fresh install** — creates the full schema from `database/schema.sql`, then records every bundled migration as a baseline (never re-executed):
+
+```php
+use Ttpryg\OrderEngine\Database\DatabaseMigrator;
+
+(new DatabaseMigrator($pdo))->migrate();
+```
+
+**Existing database** (e.g. created before the `orders.version` optimistic-locking column existed) — run pending migrations; each file executes once in name order, is recorded in the tracker **only after success**, and is automatically retried on the next run if it fails:
+
+```php
+use Ttpryg\OrderEngine\Database\MigrationRunner;
+
+$runner = new MigrationRunner($pdo);
+$runner->migrate();            // e.g. ['001_add_orders_version']
+$runner->appliedMigrations();  // full applied history
+```
+
+> Migration `001_add_orders_version` upgrades databases created before optimistic locking existed. Fresh installs skip it automatically (baseline). MySQL DDL auto-commits, so keep migration files idempotent where possible; the tracker prevents any re-execution after success.
 
 ---
 
