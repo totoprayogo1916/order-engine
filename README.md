@@ -103,9 +103,10 @@ If product price or title changes in the catalog later, historical order items r
 
 Order calculations are managed by `OrderCalculationService`:
 
-$$\text{item\_subtotal} = (\text{quantity} \times \text{unit\_price}) - \text{discount\_total} + \text{tax\_total}$$
-
-$$\text{grand\_total} = \max(0, \text{subtotal} - \text{discount\_total} + \text{tax\_total} + \text{shipping\_total})$$
+```text
+item_subtotal = max(0, (quantity × unit_price) - discount_total + tax_total)
+grand_total   = max(0, subtotal - discount_total + tax_total + shipping_total)
+```
 
 All calculations run on the `Money` value object (integer minor units), so results are exact and never suffer from floating-point drift:
 
