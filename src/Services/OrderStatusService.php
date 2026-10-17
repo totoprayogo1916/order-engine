@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Ttpryg\OrderEngine\Services;
 
 use DateTimeImmutable;
+use PDO;
 use Psr\EventDispatcher\EventDispatcherInterface;
 use Ttpryg\OrderEngine\Contracts\OrderHistoryRepositoryInterface;
 use Ttpryg\OrderEngine\Contracts\OrderRepositoryInterface;
@@ -20,14 +21,20 @@ use Ttpryg\OrderEngine\Events\OrderRefundedEvent;
 use Ttpryg\OrderEngine\Events\OrderStatusChangedEvent;
 use Ttpryg\OrderEngine\Exceptions\InvalidStatusTransitionException;
 use Ttpryg\OrderEngine\Exceptions\OrderNotFoundException;
+use Ttpryg\OrderEngine\Services\Concerns\ExecutesTransactions;
 
 class OrderStatusService
 {
+    use ExecutesTransactions;
+
     public function __construct(
         private readonly OrderRepositoryInterface $orderRepo,
         private readonly OrderHistoryRepositoryInterface $historyRepo,
-        private readonly ?EventDispatcherInterface $eventDispatcher = null
-    ) {}
+        private readonly ?EventDispatcherInterface $eventDispatcher = null,
+        ?PDO $pdo = null
+    ) {
+        $this->pdo = $pdo;
+    }
 
     public function changeStatus(
         Order $order,
@@ -49,8 +56,6 @@ class OrderStatusService
         $order->status = $targetStatus;
         $order->updatedAt = new DateTimeImmutable;
 
-        $this->orderRepo->save($order);
-
         $history = new OrderHistory(
             id: 'ord-hist-'.bin2hex(random_bytes(8)),
             orderId: $order->id,
@@ -62,7 +67,13 @@ class OrderStatusService
             note: $note,
             actorId: $actorId
         );
-        $this->historyRepo->save($history);
+
+        // Update status order dan pencatatan audit trail harus atomik:
+        // jika salah satu gagal, keduanya dibatalkan.
+        $this->executeInTransaction(function () use ($order, $history): void {
+            $this->orderRepo->save($order);
+            $this->historyRepo->save($history);
+        });
 
         if ($this->eventDispatcher instanceof \Psr\EventDispatcher\EventDispatcherInterface) {
             $this->eventDispatcher->dispatch(new OrderStatusChangedEvent($order, $fromStatus, $targetStatus));

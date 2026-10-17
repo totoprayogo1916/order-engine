@@ -21,7 +21,7 @@ In modern ecommerce architectures, managing orders requires strict isolation of 
 - **Idempotent Operations**: Calling status transitions on already-matched targets avoids duplicate persistence or redundant events.
 - **Append-Only History**: Immutable audit log for every important order action (`order_created`, `status_changed`, `item_added`, `item_removed`, `item_quantity_changed`, `address_changed`).
 - **Domain Events**: Dispatches PSR-14 events (`OrderCreatedEvent`, `OrderStatusChangedEvent`, `OrderConfirmedEvent`, `OrderProcessingEvent`, `OrderCompletedEvent`, `OrderCancelledEvent`, `OrderRefundedEvent`).
-- **Transaction Safety**: Supports atomic database transactions for creating and updating orders.
+- **Transaction Safety**: Atomic database transactions for order creation/mutation and for status transitions (the order update and its `order_histories` audit entry commit or roll back together).
 - **Money-Safe Calculations**: All monetary values are represented by the `Money` value object using integer minor units (no floating-point arithmetic), safe for payment gateway integration and financial audits.
 - **Multiple Storage Drivers**: Clean separation via PDO (MariaDB, MySQL, SQLite) & In-Memory drivers for ultra-fast testing.
 
@@ -175,8 +175,10 @@ $addressRepo = new PdoOrderAddressRepository($pdo);
 $historyRepo = new PdoOrderHistoryRepository($pdo);
 
 $orderService  = new OrderService($orderRepo, $itemRepo, $addressRepo, $historyRepo, pdo: $pdo);
-$statusService = new OrderStatusService($orderRepo, $historyRepo);
+$statusService = new OrderStatusService($orderRepo, $historyRepo, pdo: $pdo);
 ```
+
+When a `PDO` instance is provided, both services run their persistence work inside a database transaction. For `OrderStatusService`, updating the order status and writing the `order_histories` audit record are atomic — if the history write fails, the status update is rolled back. If you pass no `PDO` (e.g. with in-memory repositories in tests), operations run without transaction management.
 
 ---
 
