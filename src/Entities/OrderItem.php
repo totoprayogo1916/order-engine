@@ -5,18 +5,21 @@ declare(strict_types=1);
 namespace Ttpryg\OrderEngine\Entities;
 
 use DateTimeImmutable;
+use InvalidArgumentException;
 use Ttpryg\OrderEngine\Services\OrderCalculationService;
 use Ttpryg\OrderEngine\ValueObjects\Money;
 
 class OrderItem
 {
-    public Money $unitPrice;
+    private Money $unitPrice;
 
-    public Money $discountTotal;
+    private Money $discountTotal;
 
-    public Money $taxTotal;
+    private Money $taxTotal;
 
-    public Money $subtotal;
+    private Money $subtotal;
+
+    private int $quantity;
 
     private ?OrderCalculationService $calculationService = null;
 
@@ -27,7 +30,7 @@ class OrderItem
         public ?string $variantId = null,
         public ?string $sku = null,
         public string $name = '',
-        public int $quantity = 1,
+        int $quantity = 1,
         Money|int|float|string|null $unitPrice = null,
         Money|int|float|string|null $discountTotal = null,
         Money|int|float|string|null $taxTotal = null,
@@ -35,6 +38,11 @@ class OrderItem
         public ?DateTimeImmutable $createdAt = null,
         public ?DateTimeImmutable $updatedAt = null
     ) {
+        if ($quantity < 1) {
+            throw new InvalidArgumentException("Order item quantity must be at least 1, got {$quantity}.");
+        }
+        $this->quantity = $quantity;
+
         $currency = Money::resolveCurrency($unitPrice, $discountTotal, $taxTotal, $subtotal);
         $this->unitPrice = Money::from($unitPrice ?? 0, $currency);
         $this->discountTotal = Money::from($discountTotal ?? 0, $currency);
@@ -43,9 +51,50 @@ class OrderItem
         $this->createdAt = $createdAt ?? new DateTimeImmutable;
         $this->updatedAt = $updatedAt ?? new DateTimeImmutable;
 
-        if ($this->subtotal->isZero() && $this->quantity > 0 && ! $this->unitPrice->isZero()) {
-            $this->subtotal = $this->calculateSubtotal();
+        if ($this->subtotal->isZero() && ! $this->unitPrice->isZero()) {
+            $this->calculateSubtotal();
         }
+    }
+
+    public function quantity(): int
+    {
+        return $this->quantity;
+    }
+
+    public function unitPrice(): Money
+    {
+        return $this->unitPrice;
+    }
+
+    public function discountTotal(): Money
+    {
+        return $this->discountTotal;
+    }
+
+    public function taxTotal(): Money
+    {
+        return $this->taxTotal;
+    }
+
+    public function subtotal(): Money
+    {
+        return $this->subtotal;
+    }
+
+    /**
+     * Mengubah kuantitas item — satu-satunya jalur mutasi kuantitas setelah
+     * konstruksi. Invariant kuantitas >= 1 dijaga dengan guard assertion;
+     * subtotal ikut dihitung ulang.
+     */
+    public function updateQuantity(int $quantity): void
+    {
+        if ($quantity < 1) {
+            throw new InvalidArgumentException("Order item quantity must be at least 1, got {$quantity}.");
+        }
+
+        $this->quantity = $quantity;
+        $this->calculateSubtotal();
+        $this->updatedAt = new DateTimeImmutable;
     }
 
     public function calculateSubtotal(): Money
@@ -58,6 +107,15 @@ class OrderItem
         );
 
         return $this->subtotal;
+    }
+
+    /**
+     * Menetapkan subtotal hasil kalkulasi. Hanya untuk OrderCalculationService —
+     * satu-satunya jalur tulis subtotal setelah konstruksi.
+     */
+    public function setSubtotal(Money $subtotal): void
+    {
+        $this->subtotal = $subtotal;
     }
 
     /**

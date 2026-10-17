@@ -79,12 +79,12 @@ class OrderServiceTest extends TestCase
 
         $this->assertEquals('ORD-2026-0001', $order->orderNumber);
         $this->assertEquals(OrderStatus::PENDING, $order->status);
-        $this->assertSame('300000.00', $order->subtotal->toDecimal());
-        $this->assertSame('320000.00', $order->grandTotal->toDecimal());
+        $this->assertSame('300000.00', $order->subtotal()->toDecimal());
+        $this->assertSame('320000.00', $order->grandTotal()->toDecimal());
 
         // Verify product snapshot integrity
         $this->assertEquals('Original Product Name', $order->items[0]->name);
-        $this->assertTrue($order->items[0]->unitPrice->equals(Money::fromDecimal(150000)));
+        $this->assertTrue($order->items[0]->unitPrice()->equals(Money::fromDecimal(150000)));
     }
 
     public function test_add_remove_and_update_items(): void
@@ -107,17 +107,17 @@ class OrderServiceTest extends TestCase
         $this->orderService->addItem('order-102', $item1);
         $fetched = $this->orderService->getOrder('order-102');
         $this->assertCount(1, $fetched->items);
-        $this->assertSame('50000.00', $fetched->grandTotal->toDecimal());
+        $this->assertSame('50000.00', $fetched->grandTotal()->toDecimal());
 
         // Update Quantity
         $this->orderService->updateItemQuantity('order-102', 'item-201', 3);
         $fetched = $this->orderService->getOrder('order-102');
-        $this->assertSame('150000.00', $fetched->grandTotal->toDecimal());
+        $this->assertSame('150000.00', $fetched->grandTotal()->toDecimal());
 
         // Remove Item
         $this->orderService->removeItem('order-102', 'item-201');
         $fetched = $this->orderService->getOrder('order-102');
         $this->assertCount(0, $fetched->items);
-        $this->assertSame('0.00', $fetched->grandTotal->toDecimal());
+        $this->assertSame('0.00', $fetched->grandTotal()->toDecimal());
     }
 }

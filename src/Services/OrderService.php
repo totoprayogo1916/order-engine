@@ -146,7 +146,7 @@ class OrderService
             id: 'ord-hist-'.bin2hex(random_bytes(8)),
             orderId: $order->id,
             action: OrderHistoryAction::ITEM_ADDED,
-            note: "Added item '{$item->name}' (Qty: {$item->quantity})",
+            note: "Added item '{$item->name}' (Qty: {$item->quantity()})",
             actorId: $actorId
         );
 

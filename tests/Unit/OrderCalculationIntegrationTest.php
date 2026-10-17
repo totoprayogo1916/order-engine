@@ -47,10 +47,10 @@ class OrderCalculationIntegrationTest extends TestCase
         );
 
         // Dasar 2 × Rp 10.000,00 + iuran item Rp 0,50
-        $this->assertSame('20000.50', $order->subtotal->toDecimal());
+        $this->assertSame('20000.50', $order->subtotal()->toDecimal());
         // + biaya layanan order Rp 10,00
-        $this->assertSame('20010.50', $order->grandTotal->toDecimal());
-        $this->assertSame('20000.50', $order->items[0]->subtotal->toDecimal());
+        $this->assertSame('20010.50', $order->grandTotal()->toDecimal());
+        $this->assertSame('20000.50', $order->items[0]->subtotal()->toDecimal());
     }
 
     public function test_injected_calculator_applies_after_rehydration(): void
@@ -65,9 +65,9 @@ class OrderCalculationIntegrationTest extends TestCase
 
         $reloaded = $this->orderService->getOrder('ord-calc-2');
         $this->assertNotNull($reloaded);
-        $this->assertSame('20000.50', $reloaded->subtotal->toDecimal());
-        $this->assertSame('20010.50', $reloaded->grandTotal->toDecimal());
-        $this->assertSame('20000.50', $reloaded->items[0]->subtotal->toDecimal());
+        $this->assertSame('20000.50', $reloaded->subtotal()->toDecimal());
+        $this->assertSame('20010.50', $reloaded->grandTotal()->toDecimal());
+        $this->assertSame('20000.50', $reloaded->items[0]->subtotal()->toDecimal());
     }
 
     public function test_injected_calculator_applies_after_quantity_change(): void
@@ -81,14 +81,14 @@ class OrderCalculationIntegrationTest extends TestCase
         );
 
         $updated = $this->orderService->updateItemQuantity('ord-calc-3', 'item-calc-3', 3);
-        $this->assertSame('30000.50', $updated->subtotal->toDecimal());
-        $this->assertSame('30010.50', $updated->grandTotal->toDecimal());
+        $this->assertSame('30000.50', $updated->subtotal()->toDecimal());
+        $this->assertSame('30010.50', $updated->grandTotal()->toDecimal());
 
         // Item yang tersimpan memakai kalkulator yang sama (bukan logika duplikat).
         $reloaded = $this->orderService->getOrder('ord-calc-3');
         $this->assertNotNull($reloaded);
-        $this->assertSame('30000.50', $reloaded->items[0]->subtotal->toDecimal());
-        $this->assertSame('30010.50', $reloaded->grandTotal->toDecimal());
+        $this->assertSame('30000.50', $reloaded->items[0]->subtotal()->toDecimal());
+        $this->assertSame('30010.50', $reloaded->grandTotal()->toDecimal());
     }
 
     public function test_order_can_swap_calculation_service_directly(): void
@@ -101,24 +101,24 @@ class OrderCalculationIntegrationTest extends TestCase
         );
         $order->addItem($this->makeItem('item-calc-4', 'ord-calc-4', quantity: 1));
 
-        $this->assertSame('10000.00', $order->subtotal->toDecimal());
-        $this->assertSame('10000.00', $order->grandTotal->toDecimal());
+        $this->assertSame('10000.00', $order->subtotal()->toDecimal());
+        $this->assertSame('10000.00', $order->grandTotal()->toDecimal());
 
         $order->setCalculationService(new FeeApplyingCalculationService)->recalculateTotals();
 
-        $this->assertSame('10000.50', $order->subtotal->toDecimal());
-        $this->assertSame('10010.50', $order->grandTotal->toDecimal());
+        $this->assertSame('10000.50', $order->subtotal()->toDecimal());
+        $this->assertSame('10010.50', $order->grandTotal()->toDecimal());
     }
 
     public function test_calculate_subtotal_refreshes_item_subtotals(): void
     {
         $item = $this->makeItem('item-calc-5', 'ord-calc-5', quantity: 2);
-        $item->subtotal = Money::fromDecimal(999999);
+        $item->setSubtotal(Money::fromDecimal(999999));
 
         $subtotal = (new OrderCalculationService)->calculateSubtotal([$item]);
 
         $this->assertSame('20000.00', $subtotal->toDecimal());
-        $this->assertSame('20000.00', $item->subtotal->toDecimal());
+        $this->assertSame('20000.00', $item->subtotal()->toDecimal());
     }
 
     private function makeItem(string $id, string $orderId, int $quantity): OrderItem

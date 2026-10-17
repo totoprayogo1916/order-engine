@@ -93,8 +93,8 @@ class PdoOrderRepositoryTest extends TestCase
         $this->assertNotNull($fetched);
         $this->assertEquals('ord-pdo-1', $fetched->id);
         $this->assertEquals(OrderStatus::PENDING, $fetched->status);
-        $this->assertSame('12000000.00', $fetched->subtotal->toDecimal());
-        $this->assertSame('12025000.00', $fetched->grandTotal->toDecimal());
+        $this->assertSame('12000000.00', $fetched->subtotal()->toDecimal());
+        $this->assertSame('12025000.00', $fetched->grandTotal()->toDecimal());
 
         $this->assertCount(1, $fetched->items);
         $this->assertEquals('Pdo Laptop', $fetched->items[0]->name);
