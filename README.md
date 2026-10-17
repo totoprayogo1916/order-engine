@@ -22,6 +22,7 @@ In modern ecommerce architectures, managing orders requires strict isolation of 
 - **Append-Only History**: Immutable audit log for every important order action (`order_created`, `status_changed`, `item_added`, `item_removed`, `item_quantity_changed`, `address_changed`).
 - **Domain Events**: Dispatches PSR-14 events (`OrderCreatedEvent`, `OrderStatusChangedEvent`, `OrderConfirmedEvent`, `OrderProcessingEvent`, `OrderCompletedEvent`, `OrderCancelledEvent`, `OrderRefundedEvent`).
 - **Transaction Safety**: Atomic database transactions for order creation/mutation and for status transitions (the order update and its `order_histories` audit entry commit or roll back together).
+- **Optimistic Locking**: Every order carries a `version` column; updates use `WHERE id = :id AND version = :current_version` and throw `ConcurrencyException` on lost-update collisions (e.g. webhook confirming an order while an admin cancels it).
 - **Money-Safe Calculations**: All monetary values are represented by the `Money` value object using integer minor units (no floating-point arithmetic), safe for payment gateway integration and financial audits.
 - **Multiple Storage Drivers**: Clean separation via PDO (MariaDB, MySQL, SQLite) & In-Memory drivers for ultra-fast testing.
 
@@ -53,6 +54,7 @@ The core entity is `Order`:
 - `shipping_total`: Total shipping fee (`Money`).
 - `grand_total`: Final amount (`subtotal - discount_total + tax_total + shipping_total`, `Money`).
 - `note`: Customer or system note.
+- `version`: Optimistic-locking counter (`INT`, starts at `1`, incremented on every persisted update).
 - `created_at` & `updated_at`: `DateTimeImmutable` timestamps.
 
 ---
@@ -180,6 +182,8 @@ $statusService = new OrderStatusService($orderRepo, $historyRepo, pdo: $pdo);
 
 When a `PDO` instance is provided, both services run their persistence work inside a database transaction. For `OrderStatusService`, updating the order status and writing the `order_histories` audit record are atomic — if the history write fails, the status update is rolled back. If you pass no `PDO` (e.g. with in-memory repositories in tests), operations run without transaction management.
 
+`PdoOrderRepository::save()` uses optimistic locking: it only updates the row while the in-memory `version` still matches the database (`UPDATE ... WHERE id = :id AND version = :version`). If another process saved in the meantime, a `Ttpryg\OrderEngine\Exceptions\ConcurrencyException` is thrown and no lost update occurs. Reload the order (e.g. via `OrderService::getOrder()`) to obtain the latest version before retrying.
+
 ---
 
 ## 🗄️ 13. Database Schema
@@ -200,6 +204,7 @@ CREATE TABLE IF NOT EXISTS orders (
     shipping_total DECIMAL(18,2) NOT NULL DEFAULT 0.00,
     grand_total DECIMAL(18,2) NOT NULL DEFAULT 0.00,
     note TEXT NULL,
+    version INT NOT NULL DEFAULT 1,
     created_at DATETIME NOT NULL,
     updated_at DATETIME NOT NULL
 );

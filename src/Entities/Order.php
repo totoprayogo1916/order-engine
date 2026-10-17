@@ -43,9 +43,11 @@ class Order
         Money|int|float|string|null $grandTotal = null,
         public ?string $note = null,
         public ?DateTimeImmutable $createdAt = null,
-        public ?DateTimeImmutable $updatedAt = null
+        public ?DateTimeImmutable $updatedAt = null,
+        public int $version = 1
     ) {
         $this->status = is_string($status) ? OrderStatus::from($status) : $status;
+        $this->version = max(1, $version);
         $this->subtotal = Money::from($subtotal ?? 0, $this->currency);
         $this->discountTotal = Money::from($discountTotal ?? 0, $this->currency);
         $this->taxTotal = Money::from($taxTotal ?? 0, $this->currency);
