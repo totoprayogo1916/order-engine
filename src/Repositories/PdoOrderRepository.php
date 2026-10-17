@@ -11,11 +11,15 @@ use Ttpryg\OrderEngine\Contracts\OrderRepositoryInterface;
 use Ttpryg\OrderEngine\Entities\Order;
 use Ttpryg\OrderEngine\Enums\OrderStatus;
 use Ttpryg\OrderEngine\Exceptions\ConcurrencyException;
+use Ttpryg\OrderEngine\Repositories\Concerns\NormalizesPagination;
 use Ttpryg\OrderEngine\Repositories\Concerns\ResolvesDatabaseDriver;
 use Ttpryg\OrderEngine\ValueObjects\Money;
+use Ttpryg\OrderEngine\ValueObjects\OrderFilter;
+use Ttpryg\OrderEngine\ValueObjects\PaginatedResult;
 
 class PdoOrderRepository implements OrderRepositoryInterface
 {
+    use NormalizesPagination;
     use ResolvesDatabaseDriver;
 
     public function __construct(private readonly PDO $pdo)
@@ -178,6 +182,81 @@ class PdoOrderRepository implements OrderRepositoryInterface
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         return array_map($this->mapToEntity(...), $rows);
+    }
+
+    public function paginateByCustomer(
+        string $customerType,
+        string $customerId,
+        int $page = 1,
+        int $perPage = 20,
+        ?OrderFilter $filter = null
+    ): PaginatedResult {
+        [$page, $perPage] = $this->normalizePagination($page, $perPage);
+        $filter ??= new OrderFilter;
+
+        [$where, $params] = $this->buildPaginateClauses($customerType, $customerId, $filter);
+
+        $stmt = $this->pdo->prepare("SELECT COUNT(*) FROM orders WHERE {$where}");
+        $stmt->execute($params);
+        $total = (int) $stmt->fetchColumn();
+
+        $totalPages = $total > 0 ? (int) ceil($total / $perPage) : 0;
+        $offset = ($page - 1) * $perPage;
+
+        // LIMIT/OFFSET diinterpolasi sebagai literal — keduanya sudah dijamin
+        // integer oleh normalizePagination().
+        $stmt = $this->pdo->prepare("SELECT * FROM orders WHERE {$where} ORDER BY created_at DESC, id DESC LIMIT {$perPage} OFFSET {$offset}");
+        $stmt->execute($params);
+
+        return new PaginatedResult(
+            items: array_map($this->mapToEntity(...), $stmt->fetchAll(PDO::FETCH_ASSOC)),
+            page: $page,
+            perPage: $perPage,
+            total: $total,
+            totalPages: $totalPages
+        );
+    }
+
+    /**
+     * Klausa WHERE + parameter terikat untuk paginateByCustomer.
+     * Semua kondisi filter bersifat AND; properti null di OrderFilter diabaikan.
+     *
+     * @return array{string, array<string, mixed>}
+     */
+    private function buildPaginateClauses(string $customerType, string $customerId, OrderFilter $filter): array
+    {
+        $where = 'customer_type = :customer_type AND customer_id = :customer_id';
+        $params = [
+            'customer_type' => $customerType,
+            'customer_id' => $customerId,
+        ];
+
+        if ($filter->status instanceof \Ttpryg\OrderEngine\Enums\OrderStatus) {
+            $where .= ' AND status = :status';
+            $params['status'] = $filter->status->value;
+        }
+
+        if ($filter->paymentStatus instanceof \Ttpryg\OrderEngine\Enums\PaymentStatus) {
+            $placeholders = [];
+            foreach ($filter->paymentStatus->orderStatuses() as $index => $status) {
+                $key = "payment_status_{$index}";
+                $placeholders[] = ":{$key}";
+                $params[$key] = $status->value;
+            }
+            $where .= ' AND status IN ('.implode(', ', $placeholders).')';
+        }
+
+        if ($filter->createdFrom instanceof \DateTimeImmutable) {
+            $where .= ' AND created_at >= :created_from';
+            $params['created_from'] = $filter->createdFrom->format('Y-m-d H:i:s');
+        }
+
+        if ($filter->createdTo instanceof \DateTimeImmutable) {
+            $where .= ' AND created_at <= :created_to';
+            $params['created_to'] = $filter->createdTo->format('Y-m-d H:i:s');
+        }
+
+        return [$where, $params];
     }
 
     public function delete(string $id): bool

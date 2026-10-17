@@ -25,6 +25,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New `tests/Integration/UpsertRepositoryTest.php` (with `tests/Support/QueryLogPdo.php`) asserting writes issue no preceding SELECT and that bulk inserts collapse into one statement.
 - `OrderCalculationService` is now an injectable extension point: optional `calculationService` constructor argument on `OrderService` and `Order::setCalculationService()` allow subclassed calculators (custom rounding, fees, tax rules) to govern order totals and item subtotal refreshes.
 - New `tests/Fixtures/FeeApplyingCalculationService.php` and `tests/Unit/OrderCalculationIntegrationTest.php` proving the injected calculator is used on creation, rehydration, and quantity changes.
+- `OrderRepositoryInterface::paginateByCustomer(string $customerType, string $customerId, int $page = 1, int $perPage = 20, ?OrderFilter $filter = null): PaginatedResult` for paginated customer history. **Breaking** for custom implementations of this interface.
+- New `Ttpryg\OrderEngine\Enums\PaymentStatus` — payment view **derived** from `OrderStatus` (no payment column is stored): `UNPAID` = pending/cancelled, `PAID` = confirmed/processing/completed, `REFUNDED` = refunded; `PaymentStatus::fromOrderStatus()` and `orderStatuses()` map both directions.
+- New `Ttpryg\OrderEngine\ValueObjects\OrderFilter` (all conditions AND-combined, `null` ignored): `status`, `createdFrom`, `createdTo`, `paymentStatus`.
+- New generic `Ttpryg\OrderEngine\ValueObjects\PaginatedResult` with `items`, `page`, `perPage`, `total`, `totalPages`, plus `hasMore()` and `isEmpty()`.
+- Shared trait `Ttpryg\OrderEngine\Repositories\Concerns\NormalizesPagination` (`page` ≥ 1, `perPage` 1–100) applied identically by both drivers.
+- New `tests/Integration/PaginationRepositoryTest.php` (memory/PDO parity for ordering, tie-breaking, all filters, normalization, and query shape) and `tests/Unit/PaymentStatusTest.php`.
 
 ### Changed
 
@@ -36,6 +42,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Order::recalculateTotals()` and `OrderItem::calculateSubtotal()` now delegate all formulas to `OrderCalculationService` (single source of truth) and align item currencies with the order currency.
 - `OrderCalculationService::calculateSubtotal()` now recomputes every item's `$subtotal` itself instead of calling back into `OrderItem::calculateSubtotal()` — one calculator instance governs both item subtotals and the order grand total, removing the last duplicated formula path.
 - `OrderService::updateItemQuantity()` no longer duplicates the quantity clamp (`max(1, ...)`) and subtotal recalculation: it saves the item instance already mutated by `Order::updateItemQuantity()` instead of refetching and re-deriving it (also fixes cross-order items being refetched and saved by ID).
+- `OrderRepositoryInterface` implementations must now also provide `paginateByCustomer()`; results are sorted `created_at DESC, id DESC` and normalized identically across drivers.
 - PDO repositories persist monetary values via `Money::toDecimal()` and hydrate them via `Money::fromDatabaseValue()` (exact parsing for MySQL decimal strings and SQLite floats).
 - `OrderStatusService::changeStatus()` (and `confirm()`, `process()`, `complete()`, `cancel()`, `refund()`) now wraps the order update and the `order_histories` insert in a single database transaction when a `PDO` instance is provided — a failed history write rolls back the status change, preserving the audit trail. Domain events are dispatched only after a successful commit.
 - `OrderService` and `OrderStatusService` now share transaction handling via the `ExecutesTransactions` trait instead of each defining their own copy; a `PDO` connection that is already inside a transaction is respected (the outer scope controls commit/rollback).

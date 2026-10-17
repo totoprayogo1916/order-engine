@@ -25,6 +25,7 @@ In modern ecommerce architectures, managing orders requires strict isolation of 
 - **Optimistic Locking**: Every order carries a `version` column; updates use `WHERE id = :id AND version = :current_version` and throw `ConcurrencyException` on lost-update collisions (e.g. webhook confirming an order while an admin cancels it).
 - **Money-Safe Calculations**: All monetary values are represented by the `Money` value object using integer minor units (no floating-point arithmetic), safe for payment gateway integration and financial audits.
 - **Multiple Storage Drivers**: Clean separation via PDO (MariaDB, MySQL, SQLite) & In-Memory drivers for ultra-fast testing.
+- **Paginated Customer History**: `paginateByCustomer()` with deterministic ordering and filters for lifecycle status, `created_at` ranges, and a payment view derived from the order status (no payment column stored).
 
 ---
 
@@ -184,6 +185,41 @@ PDO repositories never perform a SELECT before writing (no "SELECT before INSERT
 
 - **Order items** are written with a single upsert statement — `INSERT ... ON DUPLICATE KEY UPDATE` on MySQL/MariaDB, `INSERT ... ON CONFLICT (id) DO UPDATE` on SQLite/PostgreSQL — and `OrderItemRepositoryInterface::saveMany()` persists many items in one bulk statement (used by `OrderService::createOrder()`).
 - **Orders** run the version-guarded `UPDATE ... WHERE id = :id AND version = :version` first (one statement for existing orders), then a plain `INSERT` when no row matched; the `SELECT` that still exists is only used to classify an INSERT failure (stale version → `ConcurrencyException`).
+
+### Querying & Pagination
+
+`OrderRepositoryInterface::paginateByCustomer()` returns one page of a customer's orders (newest first, `created_at DESC` with `id DESC` as tie-breaker) together with metadata:
+
+```php
+use Ttpryg\OrderEngine\Enums\OrderStatus;
+use Ttpryg\OrderEngine\Enums\PaymentStatus;
+use Ttpryg\OrderEngine\ValueObjects\OrderFilter;
+
+$result = $orderRepo->paginateByCustomer(
+    'user',
+    'user-123',
+    page: 1,
+    perPage: 20,
+    filter: new OrderFilter(
+        status: OrderStatus::PENDING,          // lifecycle status
+        createdFrom: new DateTimeImmutable('2026-01-01'),
+        createdTo: new DateTimeImmutable('2026-01-31'),
+        paymentStatus: PaymentStatus::UNPAID,  // derived from status
+    )
+);
+
+$result->items;      // Order[] for this page
+$result->total;      // total matching rows across all pages
+$result->totalPages; // 0 when empty
+$result->hasMore();  // page < totalPages
+```
+
+Details:
+
+- All filter conditions are combined with AND semantics; `null` properties are ignored. Setting both `status` and `paymentStatus` applies both independently (a contradictory combination simply yields an empty result).
+- `PaymentStatus` is **derived** from `OrderStatus` — this library stores no payment column (zero cross-domain dependencies): `UNPAID` = pending/cancelled, `PAID` = confirmed/processing/completed, `REFUNDED` = refunded.
+- `page` and `perPage` are normalized on every driver (`page` ≥ 1, `perPage` 1–100), so misbehaving input can never produce unbounded scans.
+- `MemoryOrderRepository` and `PdoOrderRepository` behave identically (covered by parity tests).
 
 ---
 
