@@ -8,6 +8,7 @@ use DateTimeImmutable;
 use PDO;
 use Ttpryg\OrderEngine\Contracts\OrderItemRepositoryInterface;
 use Ttpryg\OrderEngine\Entities\OrderItem;
+use Ttpryg\OrderEngine\ValueObjects\Money;
 
 class PdoOrderItemRepository implements OrderItemRepositoryInterface
 {
@@ -30,10 +31,10 @@ class PdoOrderItemRepository implements OrderItemRepositoryInterface
             'sku' => $item->sku,
             'name' => $item->name,
             'quantity' => $item->quantity,
-            'unit_price' => $item->unitPrice,
-            'discount_total' => $item->discountTotal,
-            'tax_total' => $item->taxTotal,
-            'subtotal' => $item->subtotal,
+            'unit_price' => $item->unitPrice->toDecimal(),
+            'discount_total' => $item->discountTotal->toDecimal(),
+            'tax_total' => $item->taxTotal->toDecimal(),
+            'subtotal' => $item->subtotal->toDecimal(),
             'created_at' => $item->createdAt->format('Y-m-d H:i:s'),
             'updated_at' => $item->updatedAt->format('Y-m-d H:i:s'),
         ]);
@@ -71,6 +72,9 @@ class PdoOrderItemRepository implements OrderItemRepositoryInterface
         return $stmt->execute(['order_id' => $orderId]);
     }
 
+    /**
+     * @param  array<string, mixed>  $row
+     */
     private function mapToEntity(array $row): OrderItem
     {
         return new OrderItem(
@@ -81,10 +85,10 @@ class PdoOrderItemRepository implements OrderItemRepositoryInterface
             sku: $row['sku'] ?? null,
             name: (string) $row['name'],
             quantity: (int) $row['quantity'],
-            unitPrice: (float) $row['unit_price'],
-            discountTotal: (float) $row['discount_total'],
-            taxTotal: (float) $row['tax_total'],
-            subtotal: (float) $row['subtotal'],
+            unitPrice: Money::fromDatabaseValue($row['unit_price']),
+            discountTotal: Money::fromDatabaseValue($row['discount_total']),
+            taxTotal: Money::fromDatabaseValue($row['tax_total']),
+            subtotal: Money::fromDatabaseValue($row['subtotal']),
             createdAt: ! empty($row['created_at']) ? new DateTimeImmutable($row['created_at']) : null,
             updatedAt: ! empty($row['updated_at']) ? new DateTimeImmutable($row['updated_at']) : null
         );

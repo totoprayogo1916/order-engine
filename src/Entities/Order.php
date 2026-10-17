@@ -6,10 +6,22 @@ namespace Ttpryg\OrderEngine\Entities;
 
 use DateTimeImmutable;
 use Ttpryg\OrderEngine\Enums\OrderStatus;
+use Ttpryg\OrderEngine\Services\OrderCalculationService;
+use Ttpryg\OrderEngine\ValueObjects\Money;
 
 class Order
 {
     public OrderStatus $status;
+
+    public Money $subtotal;
+
+    public Money $discountTotal;
+
+    public Money $taxTotal;
+
+    public Money $shippingTotal;
+
+    public Money $grandTotal;
 
     /** @var OrderItem[] */
     public array $items = [];
@@ -24,16 +36,21 @@ class Order
         public readonly string $customerId,
         OrderStatus|string $status = OrderStatus::PENDING,
         public string $currency = 'IDR',
-        public float $subtotal = 0.0,
-        public float $discountTotal = 0.0,
-        public float $taxTotal = 0.0,
-        public float $shippingTotal = 0.0,
-        public float $grandTotal = 0.0,
+        Money|int|float|string|null $subtotal = null,
+        Money|int|float|string|null $discountTotal = null,
+        Money|int|float|string|null $taxTotal = null,
+        Money|int|float|string|null $shippingTotal = null,
+        Money|int|float|string|null $grandTotal = null,
         public ?string $note = null,
         public ?DateTimeImmutable $createdAt = null,
         public ?DateTimeImmutable $updatedAt = null
     ) {
         $this->status = is_string($status) ? OrderStatus::from($status) : $status;
+        $this->subtotal = Money::from($subtotal ?? 0, $this->currency);
+        $this->discountTotal = Money::from($discountTotal ?? 0, $this->currency);
+        $this->taxTotal = Money::from($taxTotal ?? 0, $this->currency);
+        $this->shippingTotal = Money::from($shippingTotal ?? 0, $this->currency);
+        $this->grandTotal = Money::from($grandTotal ?? 0, $this->currency);
         $this->createdAt = $createdAt ?? new DateTimeImmutable;
         $this->updatedAt = $updatedAt ?? new DateTimeImmutable;
     }
@@ -70,11 +87,17 @@ class Order
 
     public function recalculateTotals(): void
     {
-        $subtotal = 0.0;
         foreach ($this->items as $item) {
-            $subtotal += $item->calculateSubtotal();
+            $item->alignCurrency($this->currency);
         }
-        $this->subtotal = $subtotal;
-        $this->grandTotal = max(0.0, $this->subtotal - $this->discountTotal + $this->taxTotal + $this->shippingTotal);
+
+        $calculator = new OrderCalculationService;
+        $this->subtotal = $calculator->calculateSubtotal($this->items, $this->currency);
+        $this->grandTotal = $calculator->calculateGrandTotal(
+            $this->subtotal,
+            $this->discountTotal,
+            $this->taxTotal,
+            $this->shippingTotal
+        );
     }
 }

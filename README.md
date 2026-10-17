@@ -22,6 +22,7 @@ In modern ecommerce architectures, managing orders requires strict isolation of 
 - **Append-Only History**: Immutable audit log for every important order action (`order_created`, `status_changed`, `item_added`, `item_removed`, `item_quantity_changed`, `address_changed`).
 - **Domain Events**: Dispatches PSR-14 events (`OrderCreatedEvent`, `OrderStatusChangedEvent`, `OrderConfirmedEvent`, `OrderProcessingEvent`, `OrderCompletedEvent`, `OrderCancelledEvent`, `OrderRefundedEvent`).
 - **Transaction Safety**: Supports atomic database transactions for creating and updating orders.
+- **Money-Safe Calculations**: All monetary values are represented by the `Money` value object using integer minor units (no floating-point arithmetic), safe for payment gateway integration and financial audits.
 - **Multiple Storage Drivers**: Clean separation via PDO (MariaDB, MySQL, SQLite) & In-Memory drivers for ultra-fast testing.
 
 ---
@@ -46,11 +47,11 @@ The core entity is `Order`:
 - `customer_id`: Generic customer ID.
 - `status`: `OrderStatus` Enum (`pending`, `confirmed`, `processing`, `completed`, `cancelled`, `refunded`).
 - `currency`: Currency code (default: `IDR`).
-- `subtotal`: Total of item subtotals.
-- `discount_total`: Total order discount applied.
-- `tax_total`: Total order tax applied.
-- `shipping_total`: Total shipping fee.
-- `grand_total`: Final amount (`subtotal - discount_total + tax_total + shipping_total`).
+- `subtotal`: Total of item subtotals (`Money`).
+- `discount_total`: Total order discount applied (`Money`).
+- `tax_total`: Total order tax applied (`Money`).
+- `shipping_total`: Total shipping fee (`Money`).
+- `grand_total`: Final amount (`subtotal - discount_total + tax_total + shipping_total`, `Money`).
 - `note`: Customer or system note.
 - `created_at` & `updated_at`: `DateTimeImmutable` timestamps.
 
@@ -76,8 +77,8 @@ Invalid transitions (e.g., `PENDING` directly to `COMPLETED` or `CANCELLED` to `
 
 - `id`, `order_id`, `product_id`, `variant_id`, `sku`
 - `name`: Snapshot of product name
-- `unit_price`: Snapshot of unit price
-- `quantity`, `discount_total`, `tax_total`, `subtotal`
+- `unit_price`: Snapshot of unit price (`Money`)
+- `quantity`, `discount_total`, `tax_total`, `subtotal` (monetary fields are `Money`)
 
 If product price or title changes in the catalog later, historical order items remain unaffected.
 
@@ -99,6 +100,21 @@ Order calculations are managed by `OrderCalculationService`:
 $$\text{item\_subtotal} = (\text{quantity} \times \text{unit\_price}) - \text{discount\_total} + \text{tax\_total}$$
 
 $$\text{grand\_total} = \max(0, \text{subtotal} - \text{discount\_total} + \text{tax\_total} + \text{shipping\_total})$$
+
+All calculations run on the `Money` value object (integer minor units), so results are exact and never suffer from floating-point drift:
+
+```php
+use Ttpryg\OrderEngine\ValueObjects\Money;
+
+$unitPrice = Money::fromDecimal(15000000);   // Rp 15.000.000,00
+$total     = $unitPrice->multiply(2);        // Rp 30.000.000,00
+
+$unitPrice->toDecimal();   // "15000000.00" — untuk kolom DECIMAL / payment gateway
+$unitPrice->minorUnits();  // 1500000000
+$unitPrice->toFloat();     // 15000000.0 — hanya untuk display/logging
+```
+
+`Money::fromDecimal()` accepts `Money`, `int`, `float`, and `string` inputs; inputs are normalized immediately into exact integer minor units. Mixed-currency arithmetic throws an `InvalidArgumentException`.
 
 ---
 
@@ -272,6 +288,7 @@ docker compose exec app vendor/bin/phpunit
 use Ttpryg\OrderEngine\Entities\OrderItem;
 use Ttpryg\OrderEngine\Entities\OrderAddress;
 use Ttpryg\OrderEngine\Enums\OrderAddressType;
+use Ttpryg\OrderEngine\ValueObjects\Money;
 
 // 1. Create a new Order
 $item = new OrderItem(
@@ -281,7 +298,7 @@ $item = new OrderItem(
     sku: 'SKU-LAPTOP-01',
     name: 'Pro Laptop 15-inch',
     quantity: 1,
-    unitPrice: 15000000.0
+    unitPrice: Money::fromDecimal(15000000)
 );
 
 $shippingAddress = new OrderAddress(
@@ -302,8 +319,11 @@ $order = $orderService->createOrder(
     customerId: 'usr-55',
     items: [$item],
     addresses: [$shippingAddress],
-    shippingTotal: 50000.0
+    shippingTotal: Money::fromDecimal(50000)
 );
+
+// Read the exact grand total (e.g. for a payment gateway invoice)
+$paymentAmount = $order->grandTotal->toDecimal(); // "15050000.00"
 
 // 2. Advance Order Lifecycle Status
 $statusService->confirm('order-1001', actorId: 'admin-1');

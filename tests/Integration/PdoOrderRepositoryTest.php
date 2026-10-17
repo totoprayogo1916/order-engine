@@ -16,6 +16,7 @@ use Ttpryg\OrderEngine\Repositories\PdoOrderHistoryRepository;
 use Ttpryg\OrderEngine\Repositories\PdoOrderItemRepository;
 use Ttpryg\OrderEngine\Repositories\PdoOrderRepository;
 use Ttpryg\OrderEngine\Services\OrderService;
+use Ttpryg\OrderEngine\ValueObjects\Money;
 
 class PdoOrderRepositoryTest extends TestCase
 {
@@ -62,7 +63,7 @@ class PdoOrderRepositoryTest extends TestCase
             sku: 'SKU-PDO',
             name: 'Pdo Laptop',
             quantity: 1,
-            unitPrice: 12000000.0
+            unitPrice: Money::fromDecimal(12000000)
         );
 
         $shippingAddress = new OrderAddress(
@@ -84,7 +85,7 @@ class PdoOrderRepositoryTest extends TestCase
             items: [$item],
             addresses: [$shippingAddress],
             orderNumber: 'ORD-SQLITE-001',
-            shippingTotal: 25000.0
+            shippingTotal: Money::fromDecimal(25000)
         );
 
         $fetched = $this->orderService->getOrderByNumber('ORD-SQLITE-001');
@@ -92,8 +93,8 @@ class PdoOrderRepositoryTest extends TestCase
         $this->assertNotNull($fetched);
         $this->assertEquals('ord-pdo-1', $fetched->id);
         $this->assertEquals(OrderStatus::PENDING, $fetched->status);
-        $this->assertEquals(12000000.0, $fetched->subtotal);
-        $this->assertEquals(12025000.0, $fetched->grandTotal);
+        $this->assertSame('12000000.00', $fetched->subtotal->toDecimal());
+        $this->assertSame('12025000.00', $fetched->grandTotal->toDecimal());
 
         $this->assertCount(1, $fetched->items);
         $this->assertEquals('Pdo Laptop', $fetched->items[0]->name);
@@ -119,7 +120,7 @@ class PdoOrderRepositoryTest extends TestCase
                 productId: 'p-1',
                 name: 'Test Item',
                 quantity: 1,
-                unitPrice: 10.0
+                unitPrice: Money::fromDecimal(10)
             );
             $this->itemRepo->save($item);
 

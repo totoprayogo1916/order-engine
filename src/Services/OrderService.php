@@ -18,6 +18,7 @@ use Ttpryg\OrderEngine\Enums\OrderHistoryAction;
 use Ttpryg\OrderEngine\Enums\OrderStatus;
 use Ttpryg\OrderEngine\Events\OrderCreatedEvent;
 use Ttpryg\OrderEngine\Exceptions\OrderNotFoundException;
+use Ttpryg\OrderEngine\ValueObjects\Money;
 use Ttpryg\OrderEngine\ValueObjects\OrderNumber;
 
 class OrderService
@@ -43,9 +44,9 @@ class OrderService
         array $addresses = [],
         ?string $orderNumber = null,
         string $currency = 'IDR',
-        float $discountTotal = 0.0,
-        float $taxTotal = 0.0,
-        float $shippingTotal = 0.0,
+        Money|int|float|string $discountTotal = 0,
+        Money|int|float|string $taxTotal = 0,
+        Money|int|float|string $shippingTotal = 0,
         ?string $note = null,
         ?string $actorId = null
     ): Order {

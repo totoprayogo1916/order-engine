@@ -5,37 +5,63 @@ declare(strict_types=1);
 namespace Ttpryg\OrderEngine\Services;
 
 use Ttpryg\OrderEngine\Entities\OrderItem;
+use Ttpryg\OrderEngine\ValueObjects\Money;
 
+/**
+ * Single source of truth untuk kalkulasi diskon, pajak, subtotal, dan grand total.
+ *
+ * Seluruh operasi dilakukan dalam representasi Money (integer minor units),
+ * sehingga tidak ada perbandingan atau penjumlahan float di jalur finansial.
+ */
 class OrderCalculationService
 {
     public function calculateItemSubtotal(
         int $quantity,
-        float $unitPrice,
-        float $discountTotal = 0.0,
-        float $taxTotal = 0.0
-    ): float {
-        return max(0.0, ($quantity * $unitPrice) - $discountTotal + $taxTotal);
+        Money|int|float|string $unitPrice,
+        Money|int|float|string $discountTotal = 0,
+        Money|int|float|string $taxTotal = 0
+    ): Money {
+        $currency = Money::resolveCurrency($unitPrice, $discountTotal, $taxTotal);
+        $unitPrice = Money::from($unitPrice, $currency);
+        $discountTotal = Money::from($discountTotal, $currency);
+        $taxTotal = Money::from($taxTotal, $currency);
+
+        return $unitPrice
+            ->multiply($quantity)
+            ->subtract($discountTotal)
+            ->add($taxTotal)
+            ->max(Money::zero($currency));
     }
 
     /**
      * @param  OrderItem[]  $items
      */
-    public function calculateSubtotal(array $items): float
+    public function calculateSubtotal(array $items, string $currency = 'IDR'): Money
     {
-        $subtotal = 0.0;
+        $subtotal = Money::zero($currency);
         foreach ($items as $item) {
-            $subtotal += $item->calculateSubtotal();
+            $subtotal = $subtotal->add($item->calculateSubtotal());
         }
 
         return $subtotal;
     }
 
     public function calculateGrandTotal(
-        float $subtotal,
-        float $discountTotal = 0.0,
-        float $taxTotal = 0.0,
-        float $shippingTotal = 0.0
-    ): float {
-        return max(0.0, $subtotal - $discountTotal + $taxTotal + $shippingTotal);
+        Money|int|float|string $subtotal,
+        Money|int|float|string $discountTotal = 0,
+        Money|int|float|string $taxTotal = 0,
+        Money|int|float|string $shippingTotal = 0
+    ): Money {
+        $currency = Money::resolveCurrency($subtotal, $discountTotal, $taxTotal, $shippingTotal);
+        $subtotal = Money::from($subtotal, $currency);
+        $discountTotal = Money::from($discountTotal, $currency);
+        $taxTotal = Money::from($taxTotal, $currency);
+        $shippingTotal = Money::from($shippingTotal, $currency);
+
+        return $subtotal
+            ->subtract($discountTotal)
+            ->add($taxTotal)
+            ->add($shippingTotal)
+            ->max(Money::zero($currency));
     }
 }

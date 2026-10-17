@@ -14,6 +14,7 @@ use Ttpryg\OrderEngine\Repositories\MemoryOrderHistoryRepository;
 use Ttpryg\OrderEngine\Repositories\MemoryOrderItemRepository;
 use Ttpryg\OrderEngine\Repositories\MemoryOrderRepository;
 use Ttpryg\OrderEngine\Services\OrderService;
+use Ttpryg\OrderEngine\ValueObjects\Money;
 
 class OrderServiceTest extends TestCase
 {
@@ -51,7 +52,7 @@ class OrderServiceTest extends TestCase
             sku: 'SKU-500',
             name: 'Original Product Name',
             quantity: 2,
-            unitPrice: 150000.0
+            unitPrice: Money::fromDecimal(150000)
         );
 
         $billingAddress = new OrderAddress(
@@ -73,17 +74,17 @@ class OrderServiceTest extends TestCase
             items: [$item],
             addresses: [$billingAddress],
             orderNumber: 'ORD-2026-0001',
-            shippingTotal: 20000.0
+            shippingTotal: Money::fromDecimal(20000)
         );
 
         $this->assertEquals('ORD-2026-0001', $order->orderNumber);
         $this->assertEquals(OrderStatus::PENDING, $order->status);
-        $this->assertEquals(300000.0, $order->subtotal);
-        $this->assertEquals(320000.0, $order->grandTotal);
+        $this->assertSame('300000.00', $order->subtotal->toDecimal());
+        $this->assertSame('320000.00', $order->grandTotal->toDecimal());
 
         // Verify product snapshot integrity
         $this->assertEquals('Original Product Name', $order->items[0]->name);
-        $this->assertEquals(150000.0, $order->items[0]->unitPrice);
+        $this->assertTrue($order->items[0]->unitPrice->equals(Money::fromDecimal(150000)));
     }
 
     public function test_add_remove_and_update_items(): void
@@ -100,23 +101,23 @@ class OrderServiceTest extends TestCase
             productId: 'prod-1',
             name: 'Item A',
             quantity: 1,
-            unitPrice: 50000.0
+            unitPrice: Money::fromDecimal(50000)
         );
 
         $this->orderService->addItem('order-102', $item1);
         $fetched = $this->orderService->getOrder('order-102');
         $this->assertCount(1, $fetched->items);
-        $this->assertEquals(50000.0, $fetched->grandTotal);
+        $this->assertSame('50000.00', $fetched->grandTotal->toDecimal());
 
         // Update Quantity
         $this->orderService->updateItemQuantity('order-102', 'item-201', 3);
         $fetched = $this->orderService->getOrder('order-102');
-        $this->assertEquals(150000.0, $fetched->grandTotal);
+        $this->assertSame('150000.00', $fetched->grandTotal->toDecimal());
 
         // Remove Item
         $this->orderService->removeItem('order-102', 'item-201');
         $fetched = $this->orderService->getOrder('order-102');
         $this->assertCount(0, $fetched->items);
-        $this->assertEquals(0.0, $fetched->grandTotal);
+        $this->assertSame('0.00', $fetched->grandTotal->toDecimal());
     }
 }
