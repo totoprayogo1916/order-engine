@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `OrderStatusService` now accepts an optional `PDO` connection (`new OrderStatusService($orderRepo, $historyRepo, $dispatcher, $pdo)`); status transitions persist atomically.
 - Shared trait `Ttpryg\OrderEngine\Services\Concerns\ExecutesTransactions` providing `executeInTransaction()` for both `OrderService` and `OrderStatusService`.
 - New `tests/Integration/OrderStatusServiceTransactionTest.php` covering atomic commit and rollback of status transitions (status update + audit history).
+- Optimistic locking for the `orders` table: new `version INT NOT NULL DEFAULT 1` column, `Order::$version` (normalized to at least `1`), and new `Ttpryg\OrderEngine\Exceptions\ConcurrencyException` thrown when an update targets a stale version.
+- New `tests/Integration/OptimisticLockingTest.php` covering version hydration, version increments, stale-copy rejection, and status-transition version bumps.
 
 ### Changed
 
@@ -30,6 +32,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PDO repositories persist monetary values via `Money::toDecimal()` and hydrate them via `Money::fromDatabaseValue()` (exact parsing for MySQL decimal strings and SQLite floats).
 - `OrderStatusService::changeStatus()` (and `confirm()`, `process()`, `complete()`, `cancel()`, `refund()`) now wraps the order update and the `order_histories` insert in a single database transaction when a `PDO` instance is provided — a failed history write rolls back the status change, preserving the audit trail. Domain events are dispatched only after a successful commit.
 - `OrderService` and `OrderStatusService` now share transaction handling via the `ExecutesTransactions` trait instead of each defining their own copy; a `PDO` connection that is already inside a transaction is respected (the outer scope controls commit/rollback).
+- `PdoOrderRepository::save()` now issues `UPDATE orders SET ..., version = version + 1 WHERE id = :id AND version = :version` and throws `ConcurrencyException` when `rowCount() === 0` (the order was modified by another process); on success the in-memory `Order::$version` is incremented. Inserts persist the initial version.
+- `MemoryOrderRepository::save()` increments `Order::$version` on subsequent saves of an existing order to keep version semantics consistent with the PDO driver.
+- **Schema change**: `database/schema.sql` adds `version INT NOT NULL DEFAULT 1` to the `orders` table. Existing databases need `ALTER TABLE orders ADD COLUMN version INT NOT NULL DEFAULT 1;` before upgrading.
 
 ### Fixed
 

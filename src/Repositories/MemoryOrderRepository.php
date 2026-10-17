@@ -14,6 +14,12 @@ class MemoryOrderRepository implements OrderRepositoryInterface
 
     public function save(Order $order): void
     {
+        if (isset($this->orders[$order->id])) {
+            // Menjaga paritas perilaku optimistic locking dengan driver PDO:
+            // setiap update menyimpan versi baru.
+            $order->version++;
+        }
+
         $this->orders[$order->id] = $order;
     }
 

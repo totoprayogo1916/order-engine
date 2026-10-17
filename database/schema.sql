@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS orders (
     shipping_total DECIMAL(18,2) NOT NULL DEFAULT 0.00,
     grand_total DECIMAL(18,2) NOT NULL DEFAULT 0.00,
     note TEXT NULL,
+    version INT NOT NULL DEFAULT 1,
     created_at DATETIME NOT NULL,
     updated_at DATETIME NOT NULL
 );
