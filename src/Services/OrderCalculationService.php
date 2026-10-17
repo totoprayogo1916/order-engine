@@ -34,13 +34,22 @@ class OrderCalculationService
     }
 
     /**
+     * Menjumlahkan subtotal seluruh item sekaligus me-refresh `$item->subtotal`
+     * memakai kalkulator INI — formula item tidak lagi diulang di mana pun.
+     *
      * @param  OrderItem[]  $items
      */
     public function calculateSubtotal(array $items, string $currency = 'IDR'): Money
     {
         $subtotal = Money::zero($currency);
         foreach ($items as $item) {
-            $subtotal = $subtotal->add($item->calculateSubtotal());
+            $item->subtotal = $this->calculateItemSubtotal(
+                $item->quantity,
+                $item->unitPrice,
+                $item->discountTotal,
+                $item->taxTotal
+            );
+            $subtotal = $subtotal->add($item->subtotal);
         }
 
         return $subtotal;
