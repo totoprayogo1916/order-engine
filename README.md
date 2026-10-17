@@ -156,6 +156,11 @@ Repository interfaces are decoupled in `Ttpryg\OrderEngine\Contracts`:
 
 Both In-Memory (`MemoryOrderRepository`, etc.) and PDO implementations (`PdoOrderRepository`, etc.) are provided.
 
+PDO repositories never perform a SELECT before writing (no "SELECT before INSERT/UPDATE" pattern):
+
+- **Order items** are written with a single upsert statement — `INSERT ... ON DUPLICATE KEY UPDATE` on MySQL/MariaDB, `INSERT ... ON CONFLICT (id) DO UPDATE` on SQLite/PostgreSQL — and `OrderItemRepositoryInterface::saveMany()` persists many items in one bulk statement (used by `OrderService::createOrder()`).
+- **Orders** run the version-guarded `UPDATE ... WHERE id = :id AND version = :version` first (one statement for existing orders), then a plain `INSERT` when no row matched; the `SELECT` that still exists is only used to classify an INSERT failure (stale version → `ConcurrencyException`).
+
 ---
 
 ## 🛢️ 12. PDO Usage

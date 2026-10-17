@@ -8,36 +8,57 @@ use DateTimeImmutable;
 use PDO;
 use Ttpryg\OrderEngine\Contracts\OrderItemRepositoryInterface;
 use Ttpryg\OrderEngine\Entities\OrderItem;
+use Ttpryg\OrderEngine\Repositories\Concerns\ResolvesDatabaseDriver;
 use Ttpryg\OrderEngine\ValueObjects\Money;
 
 class PdoOrderItemRepository implements OrderItemRepositoryInterface
 {
-    public function __construct(private readonly PDO $pdo) {}
+    use ResolvesDatabaseDriver;
+
+    /**
+     * Kolom order_items — seluruh write dilakukan lewat satu statement upsert
+     * sehingga tidak ada SELECT sebelum INSERT/UPDATE.
+     *
+     * @var list<string>
+     */
+    private const COLUMNS = [
+        'id',
+        'order_id',
+        'product_id',
+        'variant_id',
+        'sku',
+        'name',
+        'quantity',
+        'unit_price',
+        'discount_total',
+        'tax_total',
+        'subtotal',
+        'created_at',
+        'updated_at',
+    ];
+
+    public function __construct(private readonly PDO $pdo)
+    {
+        $this->driver = $this->resolveDriver($pdo);
+    }
 
     public function save(OrderItem $item): void
     {
-        $existing = $this->findById($item->id);
+        $this->upsert([$this->rowValues($item)]);
+    }
 
-        $sql = $existing instanceof \Ttpryg\OrderEngine\Entities\OrderItem
-            ? 'UPDATE order_items SET order_id = :order_id, product_id = :product_id, variant_id = :variant_id, sku = :sku, name = :name, quantity = :quantity, unit_price = :unit_price, discount_total = :discount_total, tax_total = :tax_total, subtotal = :subtotal, updated_at = :updated_at WHERE id = :id'
-            : 'INSERT INTO order_items (id, order_id, product_id, variant_id, sku, name, quantity, unit_price, discount_total, tax_total, subtotal, created_at, updated_at) VALUES (:id, :order_id, :product_id, :variant_id, :sku, :name, :quantity, :unit_price, :discount_total, :tax_total, :subtotal, :created_at, :updated_at)';
+    public function saveMany(array $items): void
+    {
+        $rows = [];
+        foreach ($items as $item) {
+            $rows[] = $this->rowValues($item);
+        }
 
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute([
-            'id' => $item->id,
-            'order_id' => $item->orderId,
-            'product_id' => $item->productId,
-            'variant_id' => $item->variantId,
-            'sku' => $item->sku,
-            'name' => $item->name,
-            'quantity' => $item->quantity,
-            'unit_price' => $item->unitPrice->toDecimal(),
-            'discount_total' => $item->discountTotal->toDecimal(),
-            'tax_total' => $item->taxTotal->toDecimal(),
-            'subtotal' => $item->subtotal->toDecimal(),
-            'created_at' => $item->createdAt->format('Y-m-d H:i:s'),
-            'updated_at' => $item->updatedAt->format('Y-m-d H:i:s'),
-        ]);
+        if ($rows === []) {
+            return;
+        }
+
+        $this->upsert($rows);
     }
 
     public function findById(string $id): ?OrderItem
@@ -70,6 +91,67 @@ class PdoOrderItemRepository implements OrderItemRepositoryInterface
         $stmt = $this->pdo->prepare('DELETE FROM order_items WHERE order_id = :order_id');
 
         return $stmt->execute(['order_id' => $orderId]);
+    }
+
+    /**
+     * Satu statement upsert untuk satu baris atau banyak baris (bulk).
+     *
+     * @param  list<array<string, mixed>>  $rows
+     */
+    private function upsert(array $rows): void
+    {
+        $updatableColumns = array_values(array_diff(self::COLUMNS, ['created_at']));
+
+        $tuples = [];
+        $params = [];
+        foreach ($rows as $index => $values) {
+            $tuple = [];
+            foreach (self::COLUMNS as $column) {
+                $name = "{$column}_{$index}";
+                $tuple[] = ":{$name}";
+                $params[$name] = $values[$column];
+            }
+            $tuples[] = '('.implode(', ', $tuple).')';
+        }
+
+        $sql = 'INSERT INTO order_items ('.implode(', ', self::COLUMNS).') VALUES '.implode(', ', $tuples);
+
+        if ($this->driver === 'mysql') {
+            $sql .= ' ON DUPLICATE KEY UPDATE '.implode(', ', array_map(
+                static fn (string $column): string => "{$column} = VALUES({$column})",
+                $updatableColumns
+            ));
+        } else {
+            $sql .= ' ON CONFLICT (id) DO UPDATE SET '.implode(', ', array_map(
+                static fn (string $column): string => "{$column} = excluded.{$column}",
+                $updatableColumns
+            ));
+        }
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function rowValues(OrderItem $item): array
+    {
+        return [
+            'id' => $item->id,
+            'order_id' => $item->orderId,
+            'product_id' => $item->productId,
+            'variant_id' => $item->variantId,
+            'sku' => $item->sku,
+            'name' => $item->name,
+            'quantity' => $item->quantity,
+            'unit_price' => $item->unitPrice->toDecimal(),
+            'discount_total' => $item->discountTotal->toDecimal(),
+            'tax_total' => $item->taxTotal->toDecimal(),
+            'subtotal' => $item->subtotal->toDecimal(),
+            'created_at' => $item->createdAt->format('Y-m-d H:i:s'),
+            'updated_at' => $item->updatedAt->format('Y-m-d H:i:s'),
+        ];
     }
 
     /**
