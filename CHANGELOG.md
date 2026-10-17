@@ -31,6 +31,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New generic `Ttpryg\OrderEngine\ValueObjects\PaginatedResult` with `items`, `page`, `perPage`, `total`, `totalPages`, plus `hasMore()` and `isEmpty()`.
 - Shared trait `Ttpryg\OrderEngine\Repositories\Concerns\NormalizesPagination` (`page` ≥ 1, `perPage` 1–100) applied identically by both drivers.
 - New `tests/Integration/PaginationRepositoryTest.php` (memory/PDO parity for ordering, tie-breaking, all filters, normalization, and query shape) and `tests/Unit/PaymentStatusTest.php`.
+- Versioned schema migrations following the ecosystem convention (custom runner, no external migration library):
+  - `Ttpryg\OrderEngine\Database\DatabaseMigrator` bootstraps fresh installs from `database/schema.sql` and baselines bundled migrations; on an existing database it runs only pending incremental migrations.
+  - `Ttpryg\OrderEngine\Database\MigrationRunner` executes `database/migrations/*.sql` once per file (name order), recording each in the `order_engine_migrations` tracker table only after success, so failed migrations are retried automatically on the next run.
+  - Bundled migration `001_add_orders_version` upgrades pre-optimistic-locking databases with `ALTER TABLE orders ADD COLUMN version INT NOT NULL DEFAULT 1`.
+- New `tests/Unit/DatabaseMigratorTest.php` and `tests/Unit/MigrationRunnerTest.php` covering fresh-install baseline, incremental upgrade of legacy databases, idempotency across runs, failure resume, and discovery of bundled migrations.
 
 ### Changed
 
