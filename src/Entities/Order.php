@@ -13,15 +13,15 @@ class Order
 {
     public OrderStatus $status;
 
-    public Money $subtotal;
+    private Money $subtotal;
 
-    public Money $discountTotal;
+    private readonly Money $discountTotal;
 
-    public Money $taxTotal;
+    private readonly Money $taxTotal;
 
-    public Money $shippingTotal;
+    private readonly Money $shippingTotal;
 
-    public Money $grandTotal;
+    private Money $grandTotal;
 
     /** @var OrderItem[] */
     public array $items = [];
@@ -76,12 +76,37 @@ class Order
         $this->updatedAt = new DateTimeImmutable;
     }
 
+    public function subtotal(): Money
+    {
+        return $this->subtotal;
+    }
+
+    public function discountTotal(): Money
+    {
+        return $this->discountTotal;
+    }
+
+    public function taxTotal(): Money
+    {
+        return $this->taxTotal;
+    }
+
+    public function shippingTotal(): Money
+    {
+        return $this->shippingTotal;
+    }
+
+    public function grandTotal(): Money
+    {
+        return $this->grandTotal;
+    }
+
     public function updateItemQuantity(string $itemId, int $quantity): void
     {
         foreach ($this->items as $item) {
             if ($item->id === $itemId) {
-                $item->quantity = max(1, $quantity);
-                $item->calculateSubtotal();
+                // Guard invariant kuantitas >= 1 hidup di OrderItem::updateQuantity().
+                $item->updateQuantity($quantity);
                 break;
             }
         }

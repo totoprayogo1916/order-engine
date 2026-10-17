@@ -59,6 +59,8 @@ The core entity is `Order`:
 - `version`: Optimistic-locking counter (`INT`, starts at `1`, incremented on every persisted update).
 - `created_at` & `updated_at`: `DateTimeImmutable` timestamps.
 
+Calculation properties are **encapsulated**: `subtotal`, `discount_total`, `tax_total`, `shipping_total`, and `grand_total` on `Order` (plus `quantity`, `unit_price`, `discount_total`, `tax_total`, and `subtotal` on `OrderItem`) are private and read through getters (`$order->grandTotal()`, `$item->quantity()`, …). They are only produced by `recalculateTotals()` / the calculation service, and quantity can never be zero or negative — `OrderItem` rejects `< 1` at construction and in `updateQuantity()`, so the invalid state cannot exist.
+
 ---
 
 ## 🔄 5. Order Lifecycle
@@ -420,7 +422,7 @@ $order = $orderService->createOrder(
 );
 
 // Read the exact grand total (e.g. for a payment gateway invoice)
-$paymentAmount = $order->grandTotal->toDecimal(); // "15050000.00"
+$paymentAmount = $order->grandTotal()->toDecimal(); // "15050000.00"
 
 // 2. Advance Order Lifecycle Status
 $statusService->confirm('order-1001', actorId: 'admin-1');
