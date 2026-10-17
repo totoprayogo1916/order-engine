@@ -18,19 +18,24 @@ use Ttpryg\OrderEngine\Enums\OrderHistoryAction;
 use Ttpryg\OrderEngine\Enums\OrderStatus;
 use Ttpryg\OrderEngine\Events\OrderCreatedEvent;
 use Ttpryg\OrderEngine\Exceptions\OrderNotFoundException;
+use Ttpryg\OrderEngine\Services\Concerns\ExecutesTransactions;
 use Ttpryg\OrderEngine\ValueObjects\Money;
 use Ttpryg\OrderEngine\ValueObjects\OrderNumber;
 
 class OrderService
 {
+    use ExecutesTransactions;
+
     public function __construct(
         private readonly OrderRepositoryInterface $orderRepo,
         private readonly OrderItemRepositoryInterface $itemRepo,
         private readonly OrderAddressRepositoryInterface $addressRepo,
         private readonly OrderHistoryRepositoryInterface $historyRepo,
         private readonly ?EventDispatcherInterface $eventDispatcher = null,
-        private readonly ?PDO $pdo = null
-    ) {}
+        ?PDO $pdo = null
+    ) {
+        $this->pdo = $pdo;
+    }
 
     /**
      * @param  OrderItem[]  $items
@@ -260,21 +265,5 @@ class OrderService
         }
 
         return $order;
-    }
-
-    private function executeInTransaction(callable $callback): void
-    {
-        if ($this->pdo instanceof \PDO && ! $this->pdo->inTransaction()) {
-            $this->pdo->beginTransaction();
-            try {
-                $callback();
-                $this->pdo->commit();
-            } catch (\Throwable $e) {
-                $this->pdo->rollBack();
-                throw $e;
-            }
-        } else {
-            $callback();
-        }
     }
 }
