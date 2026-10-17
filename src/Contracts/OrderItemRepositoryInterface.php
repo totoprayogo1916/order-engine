@@ -10,6 +10,13 @@ interface OrderItemRepositoryInterface
 {
     public function save(OrderItem $item): void;
 
+    /**
+     * Menyimpan banyak item dalam satu statement (bulk upsert).
+     *
+     * @param  OrderItem[]  $items
+     */
+    public function saveMany(array $items): void;
+
     public function findById(string $id): ?OrderItem;
 
     /**

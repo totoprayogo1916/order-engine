@@ -88,9 +88,7 @@ class OrderService
 
         $this->executeInTransaction(function () use ($order, $history): void {
             $this->orderRepo->save($order);
-            foreach ($order->items as $item) {
-                $this->itemRepo->save($item);
-            }
+            $this->itemRepo->saveMany($order->items);
             foreach ($order->addresses as $address) {
                 $this->addressRepo->save($address);
             }

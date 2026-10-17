@@ -17,6 +17,13 @@ class MemoryOrderItemRepository implements OrderItemRepositoryInterface
         $this->items[$item->id] = $item;
     }
 
+    public function saveMany(array $items): void
+    {
+        foreach ($items as $item) {
+            $this->save($item);
+        }
+    }
+
     public function findById(string $id): ?OrderItem
     {
         return $this->items[$id] ?? null;
