@@ -18,6 +18,8 @@ class OrderItem
 
     public Money $subtotal;
 
+    private ?OrderCalculationService $calculationService = null;
+
     public function __construct(
         public readonly string $id,
         public readonly string $orderId,
@@ -48,7 +50,7 @@ class OrderItem
 
     public function calculateSubtotal(): Money
     {
-        $this->subtotal = (new OrderCalculationService)->calculateItemSubtotal(
+        $this->subtotal = $this->calculationService()->calculateItemSubtotal(
             $this->quantity,
             $this->unitPrice,
             $this->discountTotal,
@@ -68,5 +70,10 @@ class OrderItem
         $this->discountTotal = $this->discountTotal->withCurrency($currency);
         $this->taxTotal = $this->taxTotal->withCurrency($currency);
         $this->subtotal = $this->subtotal->withCurrency($currency);
+    }
+
+    private function calculationService(): OrderCalculationService
+    {
+        return $this->calculationService ??= new OrderCalculationService;
     }
 }

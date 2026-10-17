@@ -118,6 +118,30 @@ $unitPrice->toFloat();     // 15000000.0 — hanya untuk display/logging
 
 `Money::fromDecimal()` accepts `Money`, `int`, `float`, and `string` inputs; inputs are normalized immediately into exact integer minor units. Mixed-currency arithmetic throws an `InvalidArgumentException`.
 
+The service is the **single source of truth** for every formula: `Order::recalculateTotals()` and each item's `$subtotal` refresh delegate to it, so the math lives in exactly one place. To customize the rules (custom rounding, service fees, tax strategy), subclass it and inject one instance:
+
+```php
+use Ttpryg\OrderEngine\Services\OrderCalculationService;
+use Ttpryg\OrderEngine\Services\OrderService;
+
+class MyCalculationService extends OrderCalculationService
+{
+    // override calculateItemSubtotal() and/or calculateGrandTotal()
+}
+
+// Application-level: injected into every order the service creates or hydrates
+$orderService = new OrderService(
+    $orderRepo,
+    $itemRepo,
+    $addressRepo,
+    $historyRepo,
+    calculationService: new MyCalculationService
+);
+
+// Per-order: swap and recalculate
+$order->setCalculationService(new MyCalculationService)->recalculateTotals();
+```
+
 ---
 
 ## 📜 9. Order History

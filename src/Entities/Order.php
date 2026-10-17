@@ -29,6 +29,8 @@ class Order
     /** @var OrderAddress[] */
     public array $addresses = [];
 
+    private ?OrderCalculationService $calculationService = null;
+
     public function __construct(
         public readonly string $id,
         public readonly string $orderNumber,
@@ -87,13 +89,24 @@ class Order
         $this->updatedAt = new DateTimeImmutable;
     }
 
+    /**
+     * Mengganti kalkulator khusus (mis. aturan pembulatan/fee custom) untuk order ini.
+     * OrderService men-inject kalkulator yang sama ke setiap order yang di-hydrate.
+     */
+    public function setCalculationService(OrderCalculationService $calculationService): self
+    {
+        $this->calculationService = $calculationService;
+
+        return $this;
+    }
+
     public function recalculateTotals(): void
     {
         foreach ($this->items as $item) {
             $item->alignCurrency($this->currency);
         }
 
-        $calculator = new OrderCalculationService;
+        $calculator = $this->calculationService();
         $this->subtotal = $calculator->calculateSubtotal($this->items, $this->currency);
         $this->grandTotal = $calculator->calculateGrandTotal(
             $this->subtotal,
@@ -101,5 +114,10 @@ class Order
             $this->taxTotal,
             $this->shippingTotal
         );
+    }
+
+    private function calculationService(): OrderCalculationService
+    {
+        return $this->calculationService ??= new OrderCalculationService;
     }
 }

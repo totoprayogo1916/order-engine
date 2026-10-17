@@ -26,15 +26,19 @@ class OrderService
 {
     use ExecutesTransactions;
 
+    private readonly OrderCalculationService $calculationService;
+
     public function __construct(
         private readonly OrderRepositoryInterface $orderRepo,
         private readonly OrderItemRepositoryInterface $itemRepo,
         private readonly OrderAddressRepositoryInterface $addressRepo,
         private readonly OrderHistoryRepositoryInterface $historyRepo,
         private readonly ?EventDispatcherInterface $eventDispatcher = null,
-        ?PDO $pdo = null
+        ?PDO $pdo = null,
+        ?OrderCalculationService $calculationService = null
     ) {
         $this->pdo = $pdo;
+        $this->calculationService = $calculationService ?? new OrderCalculationService;
     }
 
     /**
@@ -69,6 +73,7 @@ class OrderService
             shippingTotal: $shippingTotal,
             note: $note
         );
+        $order->setCalculationService($this->calculationService);
 
         foreach ($items as $item) {
             $order->addItem($item);
@@ -111,6 +116,7 @@ class OrderService
 
         $order->items = $this->itemRepo->findByOrderId($order->id);
         $order->addresses = $this->addressRepo->findByOrderId($order->id);
+        $order->setCalculationService($this->calculationService);
         $order->recalculateTotals();
 
         return $order;
@@ -125,6 +131,7 @@ class OrderService
 
         $order->items = $this->itemRepo->findByOrderId($order->id);
         $order->addresses = $this->addressRepo->findByOrderId($order->id);
+        $order->setCalculationService($this->calculationService);
         $order->recalculateTotals();
 
         return $order;
@@ -179,10 +186,14 @@ class OrderService
         $order = $this->getExistingOrder($orderId);
         $order->updateItemQuantity($itemId, $quantity);
 
-        $item = $this->itemRepo->findById($itemId);
-        if ($item instanceof \Ttpryg\OrderEngine\Entities\OrderItem) {
-            $item->quantity = max(1, $quantity);
-            $item->calculateSubtotal();
+        // Simpan instance item milik order yang sama — klamp kuantitas dan
+        // kalkulasi subtotal hanya hidup di Order::updateItemQuantity().
+        $item = null;
+        foreach ($order->items as $orderItem) {
+            if ($orderItem->id === $itemId) {
+                $item = $orderItem;
+                break;
+            }
         }
 
         $history = new OrderHistory(
@@ -194,7 +205,7 @@ class OrderService
         );
 
         $this->executeInTransaction(function () use ($order, $item, $history): void {
-            if ($item instanceof \Ttpryg\OrderEngine\Entities\OrderItem) {
+            if ($item instanceof OrderItem) {
                 $this->itemRepo->save($item);
             }
             $this->orderRepo->save($order);

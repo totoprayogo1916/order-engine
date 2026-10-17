@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `OrderItemRepositoryInterface::saveMany(array $items)` for bulk item persistence in a single statement; implemented by the in-memory driver (loop) and the PDO driver (multi-row upsert). **Breaking** for custom implementations of this interface.
 - `Ttpryg\OrderEngine\Repositories\Concerns\ResolvesDatabaseDriver` trait validating the PDO driver (`mysql`, `sqlite`, `pgsql`) and selecting the matching upsert dialect.
 - New `tests/Integration/UpsertRepositoryTest.php` (with `tests/Support/QueryLogPdo.php`) asserting writes issue no preceding SELECT and that bulk inserts collapse into one statement.
+- `OrderCalculationService` is now an injectable extension point: optional `calculationService` constructor argument on `OrderService` and `Order::setCalculationService()` allow subclassed calculators (custom rounding, fees, tax rules) to govern order totals and item subtotal refreshes.
+- New `tests/Fixtures/FeeApplyingCalculationService.php` and `tests/Unit/OrderCalculationIntegrationTest.php` proving the injected calculator is used on creation, rehydration, and quantity changes.
 
 ### Changed
 
@@ -32,6 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `OrderService::createOrder()` parameters `$discountTotal`, `$taxTotal`, `$shippingTotal` now accept `Money|int|float|string` (was `float`); scalar inputs are normalized to `Money`.
 - `Order` and `OrderItem` constructors accept `Money|int|float|string|null` for monetary arguments and normalize them to `Money` immediately, eliminating floating-point arithmetic on the financial path.
 - `Order::recalculateTotals()` and `OrderItem::calculateSubtotal()` now delegate all formulas to `OrderCalculationService` (single source of truth) and align item currencies with the order currency.
+- `OrderCalculationService::calculateSubtotal()` now recomputes every item's `$subtotal` itself instead of calling back into `OrderItem::calculateSubtotal()` — one calculator instance governs both item subtotals and the order grand total, removing the last duplicated formula path.
+- `OrderService::updateItemQuantity()` no longer duplicates the quantity clamp (`max(1, ...)`) and subtotal recalculation: it saves the item instance already mutated by `Order::updateItemQuantity()` instead of refetching and re-deriving it (also fixes cross-order items being refetched and saved by ID).
 - PDO repositories persist monetary values via `Money::toDecimal()` and hydrate them via `Money::fromDatabaseValue()` (exact parsing for MySQL decimal strings and SQLite floats).
 - `OrderStatusService::changeStatus()` (and `confirm()`, `process()`, `complete()`, `cancel()`, `refund()`) now wraps the order update and the `order_histories` insert in a single database transaction when a `PDO` instance is provided — a failed history write rolls back the status change, preserving the audit trail. Domain events are dispatched only after a successful commit.
 - `OrderService` and `OrderStatusService` now share transaction handling via the `ExecutesTransactions` trait instead of each defining their own copy; a `PDO` connection that is already inside a transaction is respected (the outer scope controls commit/rollback).
